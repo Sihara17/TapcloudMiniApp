@@ -4,21 +4,87 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Cloud, Home, Zap, Target } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 export default function TapCloudApp() {
+  const liffId = "2007685380-qx5MEZd9"
+
   const [currentScreen, setCurrentScreen] = useState("main")
-  const [points, setPoints] = useState(2.25)
+  const [points, setPoints] = useState(0)
   const [energy, setEnergy] = useState(200)
   const [maxEnergy, setMaxEnergy] = useState(200)
   const [autoPointsLevel, setAutoPointsLevel] = useState(1)
   const [energyPerDayLevel, setEnergyPerDayLevel] = useState(1)
   const [pointsPerClickLevel, setPointsPerClickLevel] = useState(1)
+  const [userId, setUserId] = useState("")
+  const [userName, setUserName] = useState("")
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  // LINE Login
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    import("@line/liff").then((liff) => {
+      liff.default.init({ liffId }).then(() => {
+        if (!liff.default.isLoggedIn()) {
+          liff.default.login()
+        } else {
+          setIsLoggedIn(true)
+          liff.default.getProfile().then(async (profile) => {
+            setUserName(profile.displayName)
+
+            const res = await fetch("/api/liff-login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lineUserId: profile.userId,
+                name: profile.displayName,
+                avatar: profile.pictureUrl,
+              }),
+            })
+
+            const data = await res.json()
+            if (data.userId) {
+              setUserId(data.userId)
+              const { data: stats } = await supabase
+                .from("game_stats")
+                .select("points, energy, auto_level, click_level, energy_level")
+                .eq("user_id", data.userId)
+                .single()
+
+              if (stats) {
+                setPoints(stats.points)
+                setEnergy(stats.energy)
+                setAutoPointsLevel(stats.auto_level)
+                setPointsPerClickLevel(stats.click_level)
+                setEnergyPerDayLevel(stats.energy_level)
+                setMaxEnergy(200 + 100 * (stats.energy_level - 1))
+              } else {
+                await supabase.from("game_stats").insert({
+                  user_id: data.userId,
+                  points: 0,
+                  energy: 200,
+                  auto_level: 1,
+                  click_level: 1,
+                  energy_level: 1,
+                })
+              }
+            }
+          })
+        }
+      })
+    })
+  }, [])
 
   // Auto points generation
   useEffect(() => {
     const interval = setInterval(() => {
       if (autoPointsLevel > 1) {
-        setPoints((prev) => prev + 0.1)
+        setPoints((prev) => {
+          const updated = prev + 0.1
+          setDirty(true)
+          return updated
+        })
       }
     }, 1000)
     return () => clearInterval(interval)
@@ -27,148 +93,103 @@ export default function TapCloudApp() {
   // Energy regeneration
   useEffect(() => {
     const interval = setInterval(() => {
-      setEnergy((prev) => Math.min(prev + 1, maxEnergy))
+      setEnergy((prev) => {
+        const updated = Math.min(prev + 1, maxEnergy)
+        if (updated !== prev) setDirty(true)
+        return updated
+      })
     }, 3000)
     return () => clearInterval(interval)
   }, [maxEnergy])
 
+  // Auto save
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (!dirty || !userId) return
+      await supabase.from("game_stats").update({
+        points,
+        energy,
+        auto_level: autoPointsLevel,
+        click_level: pointsPerClickLevel,
+        energy_level: energyPerDayLevel,
+      }).eq("user_id", userId)
+      setDirty(false)
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [dirty, userId, points, energy, autoPointsLevel, pointsPerClickLevel, energyPerDayLevel])
+
   const handleCloudClick = () => {
-    if (energy > 0) {
-      const pointsToAdd = pointsPerClickLevel > 1 ? 2.0 : 1.0
-      setPoints((prev) => prev + pointsToAdd)
-      setEnergy((prev) => prev - 1)
-    }
+    if (energy <= 0) return
+    const pointsToAdd = pointsPerClickLevel > 1 ? 2.0 : 1.0
+    setPoints((prev) => prev + pointsToAdd)
+    setEnergy((prev) => prev - 1)
+    setDirty(true)
   }
 
   const handleUpgrade = (type: string) => {
-    if (points >= 5000) {
-      setPoints((prev) => prev - 5000)
-      switch (type) {
-        case "auto":
-          setAutoPointsLevel((prev) => prev + 1)
-          break
-        case "energy":
-          setEnergyPerDayLevel((prev) => prev + 1)
-          setMaxEnergy((prev) => prev + 100)
-          break
-        case "click":
-          setPointsPerClickLevel((prev) => prev + 1)
-          break
-      }
+    if (points < 5000) return
+    setPoints((prev) => prev - 5000)
+    switch (type) {
+      case "auto":
+        setAutoPointsLevel((prev) => prev + 1)
+        break
+      case "energy":
+        setEnergyPerDayLevel((prev) => {
+          const newLevel = prev + 1
+          setMaxEnergy(200 + 100 * (newLevel - 1))
+          return newLevel
+        })
+        break
+      case "click":
+        setPointsPerClickLevel((prev) => prev + 1)
+        break
     }
+    setDirty(true)
   }
 
   const MainScreen = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4 relative overflow-hidden">
-      {/* Background stars effect */}
-      <div className="absolute inset-0 opacity-30">
-        {[...Array(50)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-            }}
-          />
-        ))}
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4">
+      <h1 className="text-4xl font-bold text-cyan-400 mb-4">TapCloud</h1>
+      <div className="text-center">
+        <div className="text-2xl text-cyan-300">Points: {points.toFixed(2)}</div>
+        <div className="text-lg text-gray-300">Energy: {energy} / {maxEnergy}</div>
       </div>
-
-      <div className="z-10 flex flex-col items-center space-y-8">
-        <h1 className="text-4xl font-bold text-cyan-400 mb-4">TapCloud</h1>
-
-        <div className="text-center space-y-2">
-          <div className="text-2xl text-cyan-300">Points: {points.toFixed(2)}</div>
-          <div className="text-lg text-gray-300">
-            Energy: {energy} / {maxEnergy}
-          </div>
-        </div>
-
-        <div
-          className="relative w-64 h-64 cursor-pointer transform transition-transform hover:scale-105 active:scale-95"
-          onClick={handleCloudClick}
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-blue-600 to-purple-800 rounded-full opacity-80" />
-          <div className="absolute inset-0 bg-[url('/placeholder.svg?height=256&width=256')] bg-cover bg-center rounded-full opacity-20" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <Cloud className="w-16 h-16 text-cyan-400 mb-2" />
-            <span className="text-xl font-bold text-cyan-300">TapCloud</span>
-          </div>
-        </div>
-
-        <Button
-          className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-full text-lg font-semibold"
-          onClick={() => alert("LINE login not implemented in demo")}
-        >
-          Login with LINE
-        </Button>
+      <div
+        className="w-64 h-64 bg-gradient-to-br from-purple-600 via-blue-600 to-purple-800 rounded-full flex items-center justify-center text-lg font-bold shadow-lg mt-6 cursor-pointer"
+        onClick={handleCloudClick}
+      >
+        <Cloud className="w-12 h-12 text-cyan-300" />
       </div>
+      <p className="mt-4 text-sm text-cyan-500">@{userName}</p>
     </div>
   )
 
   const UpgradeScreen = () => (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4">
       <div className="max-w-md mx-auto space-y-4 pt-8">
-        <Card className="bg-slate-800/50 border-cyan-500/30">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-cyan-400 mb-2">Auto Points</h3>
-                <p className="text-gray-300">
-                  Level {autoPointsLevel} → {autoPointsLevel === 1 ? "0.00" : "0.10"} → 0.10 per sec
-                </p>
+        {[
+          { label: "Auto Points", level: autoPointsLevel, type: "auto" },
+          { label: "Energy Per Day", level: energyPerDayLevel, type: "energy" },
+          { label: "Points Per Click", level: pointsPerClickLevel, type: "click" },
+        ].map(({ label, level, type }) => (
+          <Card key={type} className="bg-slate-800/50 border-cyan-500/30">
+            <CardContent className="p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold text-cyan-400 mb-2">{label}</h3>
+                  <p className="text-gray-300">Level {level}</p>
+                </div>
+                <Button
+                  className="bg-cyan-600 hover:bg-cyan-700"
+                  onClick={() => handleUpgrade(type)}
+                  disabled={points < 5000}
+                >
+                  Upgrade (5000 pts)
+                </Button>
               </div>
-              <Button
-                className="bg-cyan-600 hover:bg-cyan-700"
-                onClick={() => handleUpgrade("auto")}
-                disabled={points < 5000}
-              >
-                Upgrade (5000 pts)
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-slate-800/50 border-cyan-500/30">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-cyan-400 mb-2">Energy Per Day</h3>
-                <p className="text-gray-300">
-                  Level {energyPerDayLevel} → {maxEnergy - 100}.00 → {maxEnergy}.00 max/day
-                </p>
-              </div>
-              <Button
-                className="bg-cyan-600 hover:bg-cyan-700"
-                onClick={() => handleUpgrade("energy")}
-                disabled={points < 5000}
-              >
-                Upgrade (5000 pts)
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-slate-800/50 border-cyan-500/30">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-cyan-400 mb-2">Points Per Click</h3>
-                <p className="text-gray-300">
-                  Level {pointsPerClickLevel} → {pointsPerClickLevel === 1 ? "0.00" : "1.00"} → 2.00 per click
-                </p>
-              </div>
-              <Button
-                className="bg-cyan-600 hover:bg-cyan-700"
-                onClick={() => handleUpgrade("click")}
-                disabled={points < 5000}
-              >
-                Upgrade (5000 pts)
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </div>
   )
