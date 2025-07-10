@@ -1,10 +1,12 @@
-import { ClientOnly } from "@/components/ClientOnly"
-import TapCloudClient from "@/components/TapCloudClient"
+'use client'
+
+import { ThemeProvider } from "@/components/theme-provider"
+import { TapCloudClient } from "@/components/TapCloudClient"
 
 export default function Page() {
   return (
-    <ClientOnly>
+    <ThemeProvider defaultTheme="light" storageKey="tapcloud-theme">
       <TapCloudClient />
-    </ClientOnly>
+    </ThemeProvider>
   )
 }
