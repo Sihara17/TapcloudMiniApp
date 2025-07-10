@@ -1,5 +1,10 @@
+import { ClientOnly } from "@/components/ClientOnly"
 import TapCloudClient from "@/components/TapCloudClient"
 
 export default function Page() {
-  return <TapCloudClient />
+  return (
+    <ClientOnly>
+      <TapCloudClient />
+    </ClientOnly>
+  )
 }
