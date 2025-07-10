@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Cloud, Home, Zap, Target } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { DappSDK } from "@linenext/dapp-portal-sdk"
 
 export default function TapCloudApp() {
-  const liffId = "2007685321-Ra4J6853"
+  const liffId = "2007685380-qx5MEZd9"
 
   const [currentScreen, setCurrentScreen] = useState("main")
   const [points, setPoints] = useState(0)
@@ -21,59 +22,16 @@ export default function TapCloudApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [dirty, setDirty] = useState(false)
 
-  // LINE Login
+  // Mini Dapp SDK Init
   useEffect(() => {
-    if (typeof window === "undefined") return
-    import("@line/liff").then((liff) => {
-      liff.default.init({ liffId }).then(() => {
-        if (!liff.default.isLoggedIn()) {
-          liff.default.login()
-        } else {
-          setIsLoggedIn(true)
-          liff.default.getProfile().then(async (profile) => {
-            setUserName(profile.displayName)
-
-            const res = await fetch("/api/liff-login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                lineUserId: profile.userId,
-                name: profile.displayName,
-                avatar: profile.pictureUrl,
-              }),
-            })
-
-            const data = await res.json()
-            if (data.userId) {
-              setUserId(data.userId)
-              const { data: stats } = await supabase
-                .from("game_stats")
-                .select("points, energy, auto_level, click_level, energy_level")
-                .eq("user_id", data.userId)
-                .single()
-
-              if (stats) {
-                setPoints(stats.points)
-                setEnergy(stats.energy)
-                setAutoPointsLevel(stats.auto_level)
-                setPointsPerClickLevel(stats.click_level)
-                setEnergyPerDayLevel(stats.energy_level)
-                setMaxEnergy(200 + 100 * (stats.energy_level - 1))
-              } else {
-                await supabase.from("game_stats").insert({
-                  user_id: data.userId,
-                  points: 0,
-                  energy: 200,
-                  auto_level: 1,
-                  click_level: 1,
-                  energy_level: 1,
-                })
-              }
-            }
-          })
-        }
-      })
+    const sdk = new DappSDK({
+      clientId: process.env.NEXT_PUBLIC_CLIENT_ID!,
+      dappId: process.env.NEXT_PUBLIC_DAPP_ID!,
     })
+
+    sdk.init().then(() => {
+      console.log("✅ Dapp SDK initialized")
+    }).catch(console.error)
   }, [])
 
   // Auto points generation
