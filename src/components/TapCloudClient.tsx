@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
 import DappSDK from "@linenext/dapp-portal-sdk"
 import { Cloud, Home, Zap, Target } from "lucide-react"
@@ -12,7 +11,6 @@ export default function TapCloudClient() {
   const [userId, setUserId] = useState("")
   const [userName, setUserName] = useState("")
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-
   const [points, setPoints] = useState(0)
   const [energy, setEnergy] = useState(200)
   const [maxEnergy, setMaxEnergy] = useState(200)
@@ -22,8 +20,9 @@ export default function TapCloudClient() {
   const [dirty, setDirty] = useState(false)
   const [screen, setScreen] = useState<"main" | "upgrades" | "quest">("main")
 
+  // Init SDK + sync data
   useEffect(() => {
-    const initSdk = async () => {
+    const init = async () => {
       const instance = new DappSDK({
         clientId: process.env.NEXT_PUBLIC_CLIENT_ID!,
         dappId: process.env.NEXT_PUBLIC_DAPP_ID!,
@@ -63,7 +62,7 @@ export default function TapCloudClient() {
       }
     }
 
-    initSdk().catch(console.error)
+    init().catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -90,16 +89,13 @@ export default function TapCloudClient() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!dirty || !userId) return
-      supabase
-        .from("game_stats")
-        .update({
-          points,
-          energy,
-          auto_level: autoLevel,
-          click_level: clickLevel,
-          energy_level: energyLevel,
-        })
-        .eq("user_id", userId)
+      supabase.from("game_stats").update({
+        points,
+        energy,
+        auto_level: autoLevel,
+        click_level: clickLevel,
+        energy_level: energyLevel,
+      }).eq("user_id", userId)
       setDirty(false)
     }, 10000)
     return () => clearInterval(interval)
@@ -107,92 +103,51 @@ export default function TapCloudClient() {
 
   const handleClick = () => {
     if (energy <= 0) return
-    setPoints((p) => p + (clickLevel > 1 ? 2 : 1))
-    setEnergy((e) => Math.max(0, e - 1))
+    setPoints(p => p + (clickLevel > 1 ? 2 : 1))
+    setEnergy(e => Math.max(0, e - 1))
     setDirty(true)
   }
-
-  const handleUpgrade = (type: "auto" | "click" | "energy") => {
-    if (points < 5000) return
-    setPoints((p) => p - 5000)
-    setDirty(true)
-
-    if (type === "auto") setAutoLevel((l) => l + 1)
-    if (type === "click") setClickLevel((l) => l + 1)
-    if (type === "energy") {
-      setEnergyLevel((l) => {
-        const newLevel = l + 1
-        setMaxEnergy(200 + 100 * (newLevel - 1))
-        return newLevel
-      })
-    }
-  }
-
-  const BottomNav = () => (
-    <div className="fixed bottom-0 w-full bg-slate-800 border-t border-slate-700 flex justify-around py-2">
-      {["main", "upgrades", "quest"].map((s) => (
-        <Button
-          key={s}
-          variant="ghost"
-          size="sm"
-          onClick={() => setScreen(s as any)}
-          className={screen === s ? "text-cyan-400" : "text-gray-400"}
-        >
-          {s === "main" && <Home className="w-6 h-6" />}
-          {s === "upgrades" && <Zap className="w-6 h-6" />}
-          {s === "quest" && <Target className="w-6 h-6" />}
-        </Button>
-      ))}
-    </div>
-  )
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4">
-      {screen === "main" && (
-        <div className="flex flex-col items-center space-y-4">
-          <h1 className="text-3xl font-bold text-cyan-400">TapCloud</h1>
-          <div>Points: {points.toFixed(2)}</div>
-          <div>Energy: {energy}/{maxEnergy}</div>
-          <div
-            className="w-52 h-52 rounded-full bg-gradient-to-br from-blue-600 via-purple-500 to-indigo-700 flex items-center justify-center cursor-pointer shadow-lg"
-            onClick={handleClick}
+    <div className="relative min-h-screen bg-black text-white overflow-hidden">
+      {/* Background awan */}
+      <div className="absolute inset-0 z-0">
+        <img src="/clouds.webp" alt="clouds" className="w-full h-full object-cover opacity-40" />
+      </div>
+
+      {/* Konten utama */}
+      <div className="relative z-10 flex flex-col items-center justify-center py-12 px-4 space-y-6">
+        <h1 className="text-4xl font-bold text-cyan-300 drop-shadow-md">TapCloud</h1>
+        <p className="text-xl text-cyan-200">Points: {points.toFixed(2)}</p>
+        <p className="text-lg text-cyan-100">Energy: {energy} / {maxEnergy}</p>
+
+        <div onClick={handleClick} className="mt-4 w-52 h-52 bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-700 rounded-full flex items-center justify-center shadow-2xl border-4 border-white cursor-pointer">
+          <img src="/logo1.png" alt="TapCloud Logo" className="w-36 h-36 rounded-full object-cover" />
+        </div>
+
+        {isLoggedIn && <p className="text-sm text-cyan-400 mt-2">@{userName}</p>}
+
+        {!isLoggedIn && (
+          <Button className="mt-4 bg-green-600 hover:bg-green-700 text-white">
+            Login with LINE
+          </Button>
+        )}
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 w-full bg-black/60 backdrop-blur border-t border-white/10 flex justify-around py-2 z-20">
+        {[["main", <Home className="w-6 h-6" />], ["upgrades", <Zap className="w-6 h-6" />], ["quest", <Target className="w-6 h-6" />]].map(([key, icon]) => (
+          <Button
+            key={key}
+            variant="ghost"
+            size="sm"
+            onClick={() => setScreen(key as any)}
+            className={screen === key ? "text-cyan-400" : "text-white/60"}
           >
-            <Cloud className="w-12 h-12 text-white" />
-          </div>
-          <p className="text-sm text-cyan-500">@{userName}</p>
-        </div>
-      )}
-
-      {screen === "upgrades" && (
-        <div className="space-y-4">
-          {[
-            { type: "auto", label: "Auto Points", level: autoLevel },
-            { type: "energy", label: "Energy Level", level: energyLevel },
-            { type: "click", label: "Click Power", level: clickLevel },
-          ].map((u) => (
-            <Card key={u.type} className="bg-slate-800">
-              <CardContent className="p-4 flex justify-between items-center">
-                <div>
-                  <h3 className="text-cyan-400 font-semibold">{u.label}</h3>
-                  <p className="text-gray-400">Level {u.level}</p>
-                </div>
-                <Button onClick={() => handleUpgrade(u.type as any)} disabled={points < 5000}>
-                  Upgrade (5000 pts)
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {screen === "quest" && (
-        <div className="flex flex-col items-center justify-center min-h-[50vh]">
-          <h2 className="text-2xl font-bold text-blue-300">Daily Quest</h2>
-          <p className="text-gray-400 mt-2">Coming Soon...</p>
-        </div>
-      )}
-
-      <BottomNav />
+            {icon}
+          </Button>
+        ))}
+      </div>
     </div>
   )
 }
