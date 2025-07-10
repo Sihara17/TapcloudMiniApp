@@ -10,7 +10,7 @@ export default function HomePage() {
     <div className="relative min-h-screen bg-black text-white flex flex-col items-center justify-between pb-24">
       {/* Background Clouds */}
       <Image
-        src="/clouds.webp"
+        src="/clouds.png"
         alt="clouds"
         layout="fill"
         objectFit="cover"
