@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Cloud, Home, Zap, Target } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { DappSDK } from "@linenext/dapp-portal-sdk"
+import { syncUserToSupabase } from "@/lib/syncUser"
 
 export default function TapCloudApp() {
   const liffId = "2007685380-qx5MEZd9"
@@ -24,15 +25,47 @@ export default function TapCloudApp() {
 
   // Mini Dapp SDK Init
   useEffect(() => {
-    const sdk = new DappSDK({
-      clientId: process.env.NEXT_PUBLIC_CLIENT_ID!,
-      dappId: process.env.NEXT_PUBLIC_DAPP_ID!,
-    })
+  const sdk = new DappSDK({
+    clientId: process.env.NEXT_PUBLIC_CLIENT_ID!,
+    dappId: process.env.NEXT_PUBLIC_DAPP_ID!,
+  })
 
-    sdk.init().then(() => {
+  sdk
+    .init()
+    .then(async () => {
       console.log("✅ Dapp SDK initialized")
-    }).catch(console.error)
-  }, [])
+      const user = await sdk.getUser()
+
+      setUserId(user.id)
+      setUserName(user.name)
+      setIsLoggedIn(true)
+
+      // Simpan ke Supabase
+      await syncUserToSupabase({
+        id: user.id,
+        name: user.name,
+        walletAddress: user.walletAddress,
+      })
+
+      // Ambil game stat kalau sudah ada
+      const { data: stat } = await supabase
+        .from("game_stats")
+        .select("*")
+        .eq("user_id", user.id)
+        .single()
+
+      if (stat) {
+        setPoints(stat.points || 0)
+        setEnergy(stat.energy || 200)
+        setAutoPointsLevel(stat.auto_level || 1)
+        setEnergyPerDayLevel(stat.energy_level || 1)
+        setPointsPerClickLevel(stat.click_level || 1)
+        setMaxEnergy(200 + 100 * ((stat.energy_level || 1) - 1))
+      }
+    })
+    .catch(console.error)
+}, [])
+
 
   // Auto points generation
   useEffect(() => {
