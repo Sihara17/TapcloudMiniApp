@@ -1,5 +1,7 @@
 // lib/syncUser.ts
-import { supabase } from "./supabase"
+import { createClient } from "@/lib/supabase/client"
+
+const supabase = createClient()
 
 export async function syncUserToSupabase(user: {
   id: string
