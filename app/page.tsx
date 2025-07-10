@@ -1,232 +1,201 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import dynamic from "next/dynamic"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Cloud, Home, Zap, Target } from "lucide-react"
 import { supabase } from "@/lib/supabase"
-import { DappSDK } from "@linenext/dapp-portal-sdk"
-import { syncUserToSupabase } from "@/lib/syncUser"
+import DappSDK from "@linenext/dapp-portal-sdk"
+import { Cloud, Home, Zap, Target } from "lucide-react"
 
-export default function TapCloudApp() {
-  const liffId = "2007685380-qx5MEZd9"
-
-  const [currentScreen, setCurrentScreen] = useState("main")
-  const [points, setPoints] = useState(0)
-  const [energy, setEnergy] = useState(200)
-  const [maxEnergy, setMaxEnergy] = useState(200)
-  const [autoPointsLevel, setAutoPointsLevel] = useState(1)
-  const [energyPerDayLevel, setEnergyPerDayLevel] = useState(1)
-  const [pointsPerClickLevel, setPointsPerClickLevel] = useState(1)
+export default function TapCloudPage() {
+  const [sdk, setSdk] = useState<DappSDK | null>(null)
   const [userId, setUserId] = useState("")
   const [userName, setUserName] = useState("")
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  const [points, setPoints] = useState(0)
+  const [energy, setEnergy] = useState(200)
+  const [maxEnergy, setMaxEnergy] = useState(200)
+  const [autoLevel, setAutoLevel] = useState(1)
+  const [clickLevel, setClickLevel] = useState(1)
+  const [energyLevel, setEnergyLevel] = useState(1)
   const [dirty, setDirty] = useState(false)
+  const [screen, setScreen] = useState<"main" | "upgrades" | "quest">("main")
 
-  // Mini Dapp SDK Init
+  // Initialize SDK once on client
   useEffect(() => {
-  const sdk = new DappSDK({
-    clientId: process.env.NEXT_PUBLIC_CLIENT_ID!,
-    dappId: process.env.NEXT_PUBLIC_DAPP_ID!,
-  })
+    const initSdk = async () => {
+      const instance = new DappSDK({
+        clientId: process.env.NEXT_PUBLIC_CLIENT_ID!,
+        dappId: process.env.NEXT_PUBLIC_DAPP_ID!,
+      })
+      await instance.init()
+      const profile = await instance.getUserProfile()
+      const id = profile.userId
+      const name = profile.name || "Guest"
 
-  sdk
-    .init()
-    .then(async () => {
-      console.log("✅ Dapp SDK initialized")
-      const user = await sdk.getUser()
-
-      setUserId(user.id)
-      setUserName(user.name)
+      setSdk(instance)
+      setUserId(id)
+      setUserName(name)
       setIsLoggedIn(true)
 
-      // Simpan ke Supabase
-      await syncUserToSupabase({
-        id: user.id,
-        name: user.name,
-        walletAddress: user.walletAddress,
-      })
-
-      // Ambil game stat kalau sudah ada
-      const { data: stat } = await supabase
+      // sync or create user in Supabase
+      const { data: existing } = await supabase
         .from("game_stats")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", id)
         .single()
 
-      if (stat) {
-        setPoints(stat.points || 0)
-        setEnergy(stat.energy || 200)
-        setAutoPointsLevel(stat.auto_level || 1)
-        setEnergyPerDayLevel(stat.energy_level || 1)
-        setPointsPerClickLevel(stat.click_level || 1)
-        setMaxEnergy(200 + 100 * ((stat.energy_level || 1) - 1))
+      if (existing) {
+        setPoints(existing.points)
+        setEnergy(existing.energy)
+        setAutoLevel(existing.auto_level)
+        setClickLevel(existing.click_level)
+        setEnergyLevel(existing.energy_level)
+        setMaxEnergy(200 + (existing.energy_level - 1) * 100)
+      } else {
+        await supabase.from("game_stats").insert({
+          user_id: id,
+          points: 0,
+          energy: 200,
+          auto_level: 1,
+          click_level: 1,
+          energy_level: 1,
+        })
       }
-    })
-    .catch(console.error)
-}, [])
+    }
 
+    initSdk().catch(console.error)
+  }, [])
 
-  // Auto points generation
+  // Auto gain points
   useEffect(() => {
     const interval = setInterval(() => {
-      if (autoPointsLevel > 1) {
-        setPoints((prev) => {
-          const updated = prev + 0.1
-          setDirty(true)
-          return updated
-        })
+      if (autoLevel > 1) {
+        setPoints((p) => p + 0.1)
+        setDirty(true)
       }
     }, 1000)
     return () => clearInterval(interval)
-  }, [autoPointsLevel])
+  }, [autoLevel])
 
-  // Energy regeneration
+  // Energy regen
   useEffect(() => {
     const interval = setInterval(() => {
-      setEnergy((prev) => {
-        const updated = Math.min(prev + 1, maxEnergy)
-        if (updated !== prev) setDirty(true)
+      setEnergy((e) => {
+        const updated = Math.min(e + 1, maxEnergy)
+        if (updated !== e) setDirty(true)
         return updated
       })
     }, 3000)
     return () => clearInterval(interval)
   }, [maxEnergy])
 
-  // Auto save
+  // Autosave
   useEffect(() => {
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       if (!dirty || !userId) return
-      await supabase.from("game_stats").update({
+      supabase.from("game_stats").update({
         points,
         energy,
-        auto_level: autoPointsLevel,
-        click_level: pointsPerClickLevel,
-        energy_level: energyPerDayLevel,
+        auto_level: autoLevel,
+        click_level: clickLevel,
+        energy_level: energyLevel,
       }).eq("user_id", userId)
       setDirty(false)
     }, 10000)
     return () => clearInterval(interval)
-  }, [dirty, userId, points, energy, autoPointsLevel, pointsPerClickLevel, energyPerDayLevel])
+  }, [dirty, userId, points, energy, autoLevel, clickLevel, energyLevel])
 
-  const handleCloudClick = () => {
+  const handleClick = () => {
     if (energy <= 0) return
-    const pointsToAdd = pointsPerClickLevel > 1 ? 2.0 : 1.0
-    setPoints((prev) => prev + pointsToAdd)
-    setEnergy((prev) => prev - 1)
+    setPoints(p => p + (clickLevel > 1 ? 2 : 1))
+    setEnergy(e => Math.max(0, e - 1))
     setDirty(true)
   }
 
-  const handleUpgrade = (type: string) => {
+  const handleUpgrade = (type: "auto" | "click" | "energy") => {
     if (points < 5000) return
-    setPoints((prev) => prev - 5000)
-    switch (type) {
-      case "auto":
-        setAutoPointsLevel((prev) => prev + 1)
-        break
-      case "energy":
-        setEnergyPerDayLevel((prev) => {
-          const newLevel = prev + 1
-          setMaxEnergy(200 + 100 * (newLevel - 1))
-          return newLevel
-        })
-        break
-      case "click":
-        setPointsPerClickLevel((prev) => prev + 1)
-        break
-    }
+    setPoints(p => p - 5000)
     setDirty(true)
+
+    if (type === "auto") setAutoLevel(l => l + 1)
+    if (type === "click") setClickLevel(l => l + 1)
+    if (type === "energy") {
+      setEnergyLevel(l => {
+        const newLevel = l + 1
+        setMaxEnergy(200 + 100 * (newLevel - 1))
+        return newLevel
+      })
+    }
   }
 
-  const MainScreen = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4">
-      <h1 className="text-4xl font-bold text-cyan-400 mb-4">TapCloud</h1>
-      <div className="text-center">
-        <div className="text-2xl text-cyan-300">Points: {points.toFixed(2)}</div>
-        <div className="text-lg text-gray-300">Energy: {energy} / {maxEnergy}</div>
-      </div>
-      <div
-        className="w-64 h-64 bg-gradient-to-br from-purple-600 via-blue-600 to-purple-800 rounded-full flex items-center justify-center text-lg font-bold shadow-lg mt-6 cursor-pointer"
-        onClick={handleCloudClick}
-      >
-        <Cloud className="w-12 h-12 text-cyan-300" />
-      </div>
-      <p className="mt-4 text-sm text-cyan-500">@{userName}</p>
-    </div>
-  )
-
-  const UpgradeScreen = () => (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4">
-      <div className="max-w-md mx-auto space-y-4 pt-8">
-        {[
-          { label: "Auto Points", level: autoPointsLevel, type: "auto" },
-          { label: "Energy Per Day", level: energyPerDayLevel, type: "energy" },
-          { label: "Points Per Click", level: pointsPerClickLevel, type: "click" },
-        ].map(({ label, level, type }) => (
-          <Card key={type} className="bg-slate-800/50 border-cyan-500/30">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-xl font-bold text-cyan-400 mb-2">{label}</h3>
-                  <p className="text-gray-300">Level {level}</p>
-                </div>
-                <Button
-                  className="bg-cyan-600 hover:bg-cyan-700"
-                  onClick={() => handleUpgrade(type)}
-                  disabled={points < 5000}
-                >
-                  Upgrade (5000 pts)
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  )
-
-  const QuestScreen = () => (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white flex flex-col items-center justify-center p-4">
-      <h1 className="text-3xl font-bold text-blue-400 mb-8">Daily Login Quest</h1>
-      <p className="text-gray-400 text-lg italic">coming Soon ....</p>
+  const BottomNav = () => (
+    <div className="fixed bottom-0 w-full bg-slate-800 border-t border-slate-700 flex justify-around py-2">
+      {["main", "upgrades", "quest"].map((s) => (
+        <Button
+          key={s}
+          variant="ghost"
+          size="sm"
+          onClick={() => setScreen(s as any)}
+          className={screen === s ? "text-cyan-400" : "text-gray-400"}
+        >
+          {s === "main" && <Home className="w-6 h-6" />}
+          {s === "upgrades" && <Zap className="w-6 h-6" />}
+          {s === "quest" && <Target className="w-6 h-6" />}
+        </Button>
+      ))}
     </div>
   )
 
   return (
-    <div className="relative">
-      {currentScreen === "main" && <MainScreen />}
-      {currentScreen === "upgrades" && <UpgradeScreen />}
-      {currentScreen === "quest" && <QuestScreen />}
-
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-800/90 backdrop-blur-sm border-t border-slate-700">
-        <div className="flex justify-around items-center py-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`flex flex-col items-center space-y-1 ${currentScreen === "main" ? "text-cyan-400" : "text-gray-400"}`}
-            onClick={() => setCurrentScreen("main")}
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white p-4">
+      {screen === "main" && (
+        <div className="flex flex-col items-center space-y-4">
+          <h1 className="text-3xl font-bold text-cyan-400">TapCloud</h1>
+          <div>Points: {points.toFixed(2)}</div>
+          <div>Energy: {energy}/{maxEnergy}</div>
+          <div
+            className="w-52 h-52 rounded-full bg-gradient-to-br from-blue-600 via-purple-500 to-indigo-700 flex items-center justify-center cursor-pointer shadow-lg"
+            onClick={handleClick}
           >
-            <Home className="w-6 h-6" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`flex flex-col items-center space-y-1 ${currentScreen === "upgrades" ? "text-cyan-400" : "text-gray-400"}`}
-            onClick={() => setCurrentScreen("upgrades")}
-          >
-            <Zap className="w-6 h-6" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`flex flex-col items-center space-y-1 ${currentScreen === "quest" ? "text-cyan-400" : "text-gray-400"}`}
-            onClick={() => setCurrentScreen("quest")}
-          >
-            <Target className="w-6 h-6" />
-          </Button>
+            <Cloud className="w-12 h-12 text-white" />
+          </div>
+          <p className="text-sm text-cyan-500">@{userName}</p>
         </div>
-      </div>
+      )}
+
+      {screen === "upgrades" && (
+        <div className="space-y-4">
+          {[
+            { type: "auto", label: "Auto Points", level: autoLevel },
+            { type: "energy", label: "Energy Level", level: energyLevel },
+            { type: "click", label: "Click Power", level: clickLevel },
+          ].map((u) => (
+            <Card key={u.type} className="bg-slate-800">
+              <CardContent className="p-4 flex justify-between items-center">
+                <div>
+                  <h3 className="text-cyan-400 font-semibold">{u.label}</h3>
+                  <p className="text-gray-400">Level {u.level}</p>
+                </div>
+                <Button onClick={() => handleUpgrade(u.type as any)} disabled={points < 5000}>
+                  Upgrade (5000 pts)
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {screen === "quest" && (
+        <div className="flex flex-col items-center justify-center min-h-[50vh]">
+          <h2 className="text-2xl font-bold text-blue-300">Daily Quest</h2>
+          <p className="text-gray-400 mt-2">Coming Soon...</p>
+        </div>
+      )}
+
+      <BottomNav />
     </div>
   )
 }
