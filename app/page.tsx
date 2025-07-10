@@ -1,7 +1,5 @@
-import dynamic from "next/dynamic"
-
-const TapCloudClient = dynamic(() => import("@/components/TapCloudClient"), { ssr: false })
+import ClientWrapper from "@/components/client-wrapper"
 
 export default function Page() {
-  return <TapCloudClient />
+  return <ClientWrapper />
 }
