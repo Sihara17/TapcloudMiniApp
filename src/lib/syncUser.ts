@@ -1,14 +1,11 @@
 // lib/syncUser.ts
 import { supabase } from "./supabase"
 
-type UserFromSDK = {
+export async function syncUserToSupabase(user: {
   id: string
   name: string
   walletAddress: string
-}
-
-export async function syncUserToSupabase(user: UserFromSDK) {
-  // Cek apakah user sudah ada
+}) {
   const { data: existing, error } = await supabase
     .from("users")
     .select("id")
@@ -21,14 +18,12 @@ export async function syncUserToSupabase(user: UserFromSDK) {
   }
 
   if (!existing) {
-    // Simpan user baru
     await supabase.from("users").insert({
       id: user.id,
       name: user.name,
       wallet_address: user.walletAddress,
     })
 
-    // Buat data game default
     await supabase.from("game_stats").insert({
       user_id: user.id,
       points: 0,
