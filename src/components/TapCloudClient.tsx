@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
-import { DappSDK } from "@linenext/dapp-portal-sdk"
+import DappSDK from "@linenext/dapp-portal-sdk"
 import { Cloud, Home, Zap, Target } from "lucide-react"
 
 export default function TapCloudClient() {
@@ -90,13 +90,16 @@ export default function TapCloudClient() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!dirty || !userId) return
-      supabase.from("game_stats").update({
-        points,
-        energy,
-        auto_level: autoLevel,
-        click_level: clickLevel,
-        energy_level: energyLevel,
-      }).eq("user_id", userId)
+      supabase
+        .from("game_stats")
+        .update({
+          points,
+          energy,
+          auto_level: autoLevel,
+          click_level: clickLevel,
+          energy_level: energyLevel,
+        })
+        .eq("user_id", userId)
       setDirty(false)
     }, 10000)
     return () => clearInterval(interval)
@@ -104,20 +107,20 @@ export default function TapCloudClient() {
 
   const handleClick = () => {
     if (energy <= 0) return
-    setPoints(p => p + (clickLevel > 1 ? 2 : 1))
-    setEnergy(e => Math.max(0, e - 1))
+    setPoints((p) => p + (clickLevel > 1 ? 2 : 1))
+    setEnergy((e) => Math.max(0, e - 1))
     setDirty(true)
   }
 
   const handleUpgrade = (type: "auto" | "click" | "energy") => {
     if (points < 5000) return
-    setPoints(p => p - 5000)
+    setPoints((p) => p - 5000)
     setDirty(true)
 
-    if (type === "auto") setAutoLevel(l => l + 1)
-    if (type === "click") setClickLevel(l => l + 1)
+    if (type === "auto") setAutoLevel((l) => l + 1)
+    if (type === "click") setClickLevel((l) => l + 1)
     if (type === "energy") {
-      setEnergyLevel(l => {
+      setEnergyLevel((l) => {
         const newLevel = l + 1
         setMaxEnergy(200 + 100 * (newLevel - 1))
         return newLevel
