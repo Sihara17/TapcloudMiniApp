@@ -1,25 +1,24 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { useDappSDK } from "@linenext/dapp-portal-sdk-react"
+
+const supabase = createClient()
 
 export default function TapCloudClient() {
-  const supabase = createClient()
-  const { user, sdk } = useDappSDK()
   const [points, setPoints] = useState(0)
-  const [energy, setEnergy] = useState(200)
+  const [energy, setEnergy] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
-  // Inisialisasi dari Supabase
+  // Ambil data user & game saat komponen mount
   useEffect(() => {
-    const init = async () => {
-      if (!user) return
-      const { id } = user
+    const fetchData = async () => {
+      const { data: userData } = await supabase.auth.getUser()
+      const id = userData.user?.id
+      if (!id) return
+
       setUserId(id)
-      setIsLoggedIn(true)
 
       const { data, error } = await supabase
         .from("game_stats")
@@ -27,28 +26,19 @@ export default function TapCloudClient() {
         .eq("user_id", id)
         .single()
 
-      if (error || !data) {
-        await supabase.from("game_stats").upsert({
-          user_id: id,
-          points: 0,
-          energy: 200,
-          auto_level: 1,
-          click_level: 1,
-          energy_level: 1,
-        })
-        setPoints(0)
-        setEnergy(200)
-      } else {
+      if (data) {
         setPoints(data.points)
         setEnergy(data.energy)
       }
+
+      if (error) console.error("❌ Gagal fetch game_stats:", error)
     }
 
-    init()
-  }, [user, supabase])
+    fetchData()
+  }, [])
 
-  // Fungsi saat tap logo
-  const handleClick = async () => {
+  // Fungsi tap cloud
+  const handleTap = async () => {
     if (!userId || energy <= 0) return
 
     const newPoints = points + 1
@@ -57,39 +47,28 @@ export default function TapCloudClient() {
     setPoints(newPoints)
     setEnergy(newEnergy)
 
-    await supabase
+    const { error } = await supabase
       .from("game_stats")
       .update({ points: newPoints, energy: newEnergy })
       .eq("user_id", userId)
+
+    if (error) console.error("❌ Gagal update game_stats:", error)
   }
 
   return (
-    <div className="flex flex-col items-center">
-      <h1 className="text-4xl font-bold text-cyan-400 mb-2 mt-6">TapCloud</h1>
-      <p className="text-lg">Points: {points.toFixed(2)}</p>
-      <p className="text-lg mb-4">Energy: {energy} / 200</p>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-cover bg-center" style={{ backgroundImage: "url('/bg.png')" }}>
+      <div className="text-white text-lg mt-4">Points: {points}</div>
+      <div className="text-white text-lg mb-4">Energy: {energy}</div>
 
-      {/* TapCloud Logo */}
-      <div
-        onClick={handleClick}
-        className="w-56 h-56 rounded-full bg-black border-4 border-cyan-400 flex items-center justify-center active:scale-95 transition-transform shadow-lg cursor-pointer"
-      >
-        <img
+      <button onClick={handleTap} disabled={energy <= 0}>
+        <Image
           src="/logo1.png"
-          alt="TapCloud"
-          className="w-44 h-44 object-cover rounded-full"
+          alt="TapCloud Logo"
+          width={200}
+          height={200}
+          className="rounded-full active:scale-95 transition"
         />
-      </div>
-
-      {/* Login Button */}
-      {!isLoggedIn && (
-        <Button
-          onClick={() => sdk?.login()}
-          className="mt-6 bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full"
-        >
-          Login with LINE
-        </Button>
-      )}
+      </button>
     </div>
   )
 }
