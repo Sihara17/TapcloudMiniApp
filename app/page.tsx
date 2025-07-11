@@ -1,12 +1,6 @@
-'use client'
-
-import { ThemeProvider } from "@/components/theme-provider"
-import { TapCloudClient } from "@/components/TapCloudClient"
+// app/page.tsx
+import ClientHome from "./ClientHome"
 
 export default function Page() {
-  return (
-    <ThemeProvider defaultTheme="light" storageKey="tapcloud-theme">
-      <TapCloudClient />
-    </ThemeProvider>
-  )
+  return <ClientHome />
 }
