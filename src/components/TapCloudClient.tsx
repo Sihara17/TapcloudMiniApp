@@ -7,7 +7,7 @@ import { Home, Zap, Target } from "lucide-react"
 
 const supabase = createClient()
 
-export default function TapCloudClient() {
+export function TapCloudClient() {
   const [points, setPoints] = useState(0)
   const [energy, setEnergy] = useState(200)
 
